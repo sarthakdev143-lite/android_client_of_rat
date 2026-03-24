@@ -1,0 +1,3 @@
+-keep class com.tlsclient.agent.** { *; }
+-keepattributes *Annotation*
+-dontwarn javax.annotation.**
