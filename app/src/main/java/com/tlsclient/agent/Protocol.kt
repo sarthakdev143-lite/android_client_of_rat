@@ -1,5 +1,6 @@
 package com.tlsclient.agent
 
+import org.json.JSONObject
 import java.io.InputStream
 import java.io.OutputStream
 import java.nio.ByteBuffer
@@ -11,8 +12,6 @@ object Protocol {
     private var msgCounter = 0
 
     fun nextId(): Int = ++msgCounter
-
-    // ── Frame I/O ─────────────────────────────────────────────────────────────
 
     fun readExact(stream: InputStream, n: Int): ByteArray {
         val buf = ByteArray(n)
@@ -40,10 +39,8 @@ object Protocol {
         stream.flush()
     }
 
-    // ── Envelope send/receive ─────────────────────────────────────────────────
-
-    fun sendEnvelope(stream: OutputStream, envelope: TlsProto.Envelope, compress: Boolean = true) {
-        val raw = envelope.toByteArray()
+    fun sendEnvelope(stream: OutputStream, envelope: JSONObject, compress: Boolean = true) {
+        val raw = envelope.toString().toByteArray(Charsets.UTF_8)
         val payload = if (compress && raw.size >= Config.COMPRESS_THRESHOLD) {
             byteArrayOf(0x01) + zlibCompress(raw)
         } else {
@@ -52,24 +49,21 @@ object Protocol {
         writeFrame(stream, payload)
     }
 
-    fun recvEnvelope(stream: InputStream): TlsProto.Envelope {
+    fun recvEnvelope(stream: InputStream): JSONObject {
         val frame = readFrame(stream)
         if (frame.isEmpty()) throw Exception("empty frame")
         val marker = frame[0]
         val data = frame.copyOfRange(1, frame.size)
         val decompressed = if (marker == 0x01.toByte()) zlibDecompress(data) else data
-        return TlsProto.Envelope.parseFrom(decompressed)
+        return JSONObject(String(decompressed, Charsets.UTF_8))
     }
 
-    fun makeEnv(clientId: String, group: String): TlsProto.Envelope {
-        return TlsProto.Envelope.newBuilder()
-            .setMsgId(nextId())
-            .setClientId(clientId)
-            .setGroup(group)
-            .build()
+    fun makeEnv(clientId: String, group: String): JSONObject {
+        return JSONObject()
+            .put("msg_id", nextId())
+            .put("client_id", clientId)
+            .put("group", group)
     }
-
-    // ── Compression ───────────────────────────────────────────────────────────
 
     private fun zlibCompress(data: ByteArray): ByteArray {
         val deflater = Deflater(6)
@@ -91,7 +85,6 @@ object Protocol {
     }
 }
 
-// Helper extension
 operator fun ByteArray.plus(other: ByteArray): ByteArray {
     val result = ByteArray(this.size + other.size)
     this.copyInto(result)
